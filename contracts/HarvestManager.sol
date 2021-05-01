@@ -1,43 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract Adminable {
-    address public admin;
-    address public pendingAdmin;
-
-    event NewAdmin(address indexed newAdmin);
-    event NewPendingAdmin(address indexed newPendingAdmin);
-
-    constructor (address admin_) {
-        admin = admin_;
-        emit NewAdmin(admin);
-    }
-
-    /**
-    * @dev Throws if called by any account other than the admin.
-    */
-    modifier onlyAdmin() {
-        require(admin == msg.sender, "Adminable: caller is not the admin");
-        _;
-    }
-
-    function acceptAdmin() public {
-        require(msg.sender == pendingAdmin, "Adminable::acceptAdmin: Call must come from pendingAdmin.");
-        admin = msg.sender;
-        pendingAdmin = address(0);
-
-        emit NewAdmin(admin);
-    }
-
-    function setPendingAdmin(address pendingAdmin_) public {
-        require(msg.sender == address(this), "Adminable::setPendingAdmin: Call must come from Timelock.");
-        pendingAdmin = pendingAdmin_;
-
-        emit NewPendingAdmin(pendingAdmin);
-    }
-
-}
-
 /*
  * @dev Provides information about the current execution context, including the
  * sender of the transaction and its data. While these are generally available
@@ -406,13 +369,67 @@ library EnumerableSet {
     }
 }
 
+
+contract Adminable is Ownable {
+    using EnumerableSet for EnumerableSet.AddressSet;
+
+    EnumerableSet.AddressSet private _admins;
+
+    event AddedAdmin(address indexed newAdmin);
+    event RemovedAdmin(address indexed admin);
+
+    constructor (address admin_) {
+        _admins.add(admin_);
+    }
+
+    /**
+    * @dev Throws if called by any account other than the admin.
+    */
+    modifier onlyAdmin() {
+        require(_admins.contains(msg.sender), "Adminable: caller is not the admin");
+        _;
+    }
+
+    function addAdmins(address[] calldata admins_) public onlyOwner returns (bool) {
+        for (uint i = 0; i < admins_.length; i++) {
+            require(admins_[i] != address(0x0), "Adminable:: Can not add 0x0 admin");
+            _admins.add(admins_[i]);
+
+            emit AddedAdmin(admins_[i]);
+        }
+        return true;
+    }
+
+    function removeAdmin(address[] calldata admins_) public onlyOwner returns (bool) {
+        for (uint i = 0; i < admins_.length; i++) {
+            require(_admins.remove(admins_[i]), "Adminable:: admin does not exist");
+            emit RemovedAdmin(admins_[i]);
+        }
+        return true;
+    }
+
+    function containsAdmin(address admin_) public view returns (bool) {
+        return _admins.contains(admin_);
+    }
+
+    function adminsCount() public view returns (uint) {
+        return _admins.length();
+    }
+
+    function adminAtIndex(uint index) public view returns (address) {
+        require(index < _admins.length(), "Adminable:: index out of bounds");
+        return _admins.at(index);
+    }
+}
+
+
 interface HarvestContract {
     function harvest() external;
     function pause() external;
     function unpause() external;
 }
 
-contract HarvestManager is Ownable, Adminable{
+contract HarvestManager is Adminable {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     mapping (address => uint) public harvestInterval;
