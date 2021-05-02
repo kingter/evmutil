@@ -442,6 +442,7 @@ contract HarvestManager is Adminable {
     event DeregisteredHarvestContract(address harvestContract);
     event TriggeredHarvest(address harvestContract);
     event HarvestFailed(address harvestContract, string reason);
+    event SkippedHarvest(address harvestContract, string reason);
     event PausedHarvest(address harvestContract);
     event PausedAll();
     event UnpausedHarvest(address harvestContract);
@@ -457,7 +458,8 @@ contract HarvestManager is Adminable {
             harvestInterval[harvestContract_[i]] = interval_[i];
             _harvestAddresses.add(harvestContract_[i]);
             emit RegisteredHarvestContract(harvestContract_[i], interval_[i]);
-            _setNextHarvestTime(block.timestamp + harvestInterval[harvestContract_[i]]);
+            // Allow to trigger the new registered harvest contract immediately.
+            _setNextHarvestTime(0);
         }
     }
 
@@ -472,6 +474,7 @@ contract HarvestManager is Adminable {
             // no need to do harvest this time.
             if (block.timestamp < harvestInterval[harvestAddr] + lastHarvest[harvestAddr]) {
                 _setNextHarvestTime(harvestInterval[harvestAddr] + lastHarvest[harvestAddr]);
+                emit SkippedHarvest(harvestAddr, "Not yet need to harvest.");
                 continue;
             }
             HarvestContract harvestContract = HarvestContract(harvestAddr);
