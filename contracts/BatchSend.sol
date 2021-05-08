@@ -853,6 +853,7 @@ library SafeERC20 {
 
 contract BatchSend is Adminable {
     using SafeERC20 for IERC20;
+    using SafeMath for uint;
     using EnumerableSet for EnumerableSet.AddressSet;
 
     IERC20 public token;
@@ -860,9 +861,9 @@ contract BatchSend is Adminable {
     EnumerableSet.AddressSet private _recipientsList;
 
     event Send(address indexed operator, address indexed to, uint amount);
+    event SendFromWallet(address indexed operator, address indexed to, uint amount);
     event AddedRecipient(address indexed recipient, uint amount);
     event RemovedRecipient(address indexed recipient);
-    event NoAmount(address indexed recipient);
 
     constructor(
         address _admin,
@@ -902,22 +903,24 @@ contract BatchSend is Adminable {
         return true;
     }
 
+    function BulkSendFromWallet() onlyAdmin external {
+        _bulkSend(true);
+    }
+
     function BulkSend() onlyAdmin external {
-        uint length = _recipientsList.length();
-        for(uint i = 0; i < length; i++) {
-            address recipient = _recipientsList.at(0);
-            uint amount = whiteList[recipient];
-            if (amount == 0) {
-                emit NoAmount(recipient);
-            }
+        _bulkSend(false);
+    }
 
-            delete whiteList[recipient];
-            _recipientsList.remove(recipient);
+    function quickBulkSendFromWallet(address[] calldata recipients_, uint[] calldata amounts_) onlyAdmin external {
+        require(recipients_.length == amounts_.length, "BatchSend: Value lengths do not match.");
+        require(recipients_.length > 0, "BatchSend: The length is 0");
 
-            emit Send(msg.sender, recipient, amount);
-
-            token.safeTransfer(recipient, amount);
+        for(uint i = 0; i < recipients_.length; i++){
+            require(recipients_[i] != address(0));
+            emit SendFromWallet(msg.sender, recipients_[i], amounts_[i]);
+            token.safeTransferFrom(msg.sender, recipients_[i], amounts_[i]);
         }
+
     }
 
     function containsRecipient(address recipient_) public view returns (bool) {
@@ -931,5 +934,25 @@ contract BatchSend is Adminable {
     function recipientAtIndex(uint index) public view returns (address) {
         require(index < _recipientsList.length(), "BatchSend:: index out of bounds");
         return _recipientsList.at(index);
+    }
+
+    function _bulkSend(bool isFromWallet) internal {
+        uint length = _recipientsList.length();
+        for(uint i = 0; i < length; i++) {
+            address recipient = _recipientsList.at(0);
+            uint amount = whiteList[recipient];
+
+            delete whiteList[recipient];
+            _recipientsList.remove(recipient);
+
+            if (isFromWallet) {
+                emit SendFromWallet(msg.sender, recipient, amount);
+                token.safeTransferFrom(msg.sender, recipient, amount);
+
+            } else {
+                emit Send(msg.sender, recipient, amount);
+                token.safeTransfer(recipient, amount);
+            }
+        }
     }
 }
